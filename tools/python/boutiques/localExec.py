@@ -1256,7 +1256,7 @@ class LocalExecutor(object):
             return {'file-name': filename, 'files': files}
         # Files are hashed
         if os.path.isfile(path):
-            hash =compute_md5(path)
+            hash =computeMD5(path)
             return {'file-name': filename, 'hash': hash}
         return None
 
@@ -1319,6 +1319,7 @@ def addDefaultValues(desc_dict, in_dict):
             in_dict[in_param['id']] = in_param.get("default-value")
     return in_dict
 
+
 # Parses absolute path into filename
 def extractFileName(path):
     if path[:-1] == '/':
@@ -1326,9 +1327,10 @@ def extractFileName(path):
     else:
         return os.path.basename(path)
 
+
 # Hashes files with MD5,
 # capable of handling large data files
-def compute_md5(filename):
+def computeMD5(filename):
     hash_md5 = hashlib.md5()
     with open(filename, "rb") as fhandle:
         for chunk in iter(lambda: fhandle.read(4096), b""):
