@@ -466,6 +466,77 @@ def pull(*params):
     puller = Puller(result.zid, result.verbose, result.sandbox)
     return puller.pull()
 
+def data(*params):
+    parser = ArgumentParser("Manage execution data collection.")
+
+    parser.add_argument("action", action="store",
+                        help="Action to take on data. Inspect: displays the "
+                        "files of execution data currently in cache. "
+                        "Publish: publishes contents of cache to Zenodo as "
+                        "a public data set. Discard: remove one or more files "
+                        "from the cache. ",
+                        choices=["inspect", "publish", "discard"])
+    parser.add_argument("--help", "-h", action="store_true",
+                        help="show this help message and exit")
+
+    helps = any([True for ht in ["--help", "-h"] if ht in params])
+    if len(params) <= 1 and helps:
+        parser.print_help()
+        raise SystemExit
+
+    args, params = parser.parse_known_args(params)
+    action = args.action
+    params += ["--help"] if args.help is True else []
+
+    if action == "inspect":
+        parser = ArgumentParser("Displays contents of cache")
+        parser.add_argument("-e", "--example", action="store_true",
+                            help="Display example data file contents.")
+        results = parser.parse_args(params)
+
+        # Generate object that will perform the commands
+        from boutiques.data import Inspector
+        inspector = Inspector({"example: results.example"})
+        # Execute it
+        return inspector.inspect()
+
+    if action == "publish":
+        parser = ArgumentParser("Publishes file(s) in the cache to Zenodo.")
+        parser.add_argument("-a", "--author", action="store",
+                            help="Set the author name for the data set "
+                            "publication. Defaults to anonymous.")
+        parser.add_argument("-s", "--standalone", action="store",
+                            help="Path to file to publish it singly as a "
+                            "data set.")
+        parser.add_argument("-i", "--individual", action="store_true",
+                            help="Publishes all data files in cache as "
+                            "independent data sets, By Default will publish "
+                            "files in bulk data sets.")
+        results = parser.parse_args(params)
+
+        # Generate object that will perform the commands
+        from boutiques.data import Publisher
+        publisher = Publisher({"author": results.author,
+                               "standalone": results.standalone,
+                               "individual": results.individual})
+        # Execute it
+        return publisher.publish()
+
+    if action == "discard":
+        parser = ArgumentParser("Delete data file(s) in cache.")
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument("-a", "--all", action="store_true",
+                            help="Delete all files in the cache.")
+        group.add_argument("-f", "--file", action="store",
+                            help="Filename of data file to delete.")
+        results = parser.parse_args(params)
+
+        # Generate object that will perform the commands
+        from boutiques.data import Discarder
+        discarder = Discarder({"all": results.all,
+                               "file": results.file})
+        # Execute it
+        return discarder.discard()
 
 def bosh(args=None):
     parser = ArgumentParser(description="Driver for Bosh functions",
@@ -488,11 +559,12 @@ def bosh(args=None):
                         "Example: Generates example command-line for descriptor"
                         ". Search: search Zenodo for descriptors. "
                         "Pull: download a descriptor from Zenodo. "
+                        "Data: manage execution data collection. "
                         "Pprint: generate pretty help text from a descriptor."
                         "Version: prints the version of this tool.",
                         choices=["create", "validate", "exec", "import",
                                  "export", "publish", "invocation", "evaluate",
-                                 "test", "example", "search", "pull", "pprint",
+                                 "test", "example", "search", "pull", "data", "pprint",
                                  "version"])
 
     parser.add_argument("--help", "-h", action="store_true",
