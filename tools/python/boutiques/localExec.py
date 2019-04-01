@@ -1282,13 +1282,14 @@ class LocalExecutor(object):
             os.makedirs(cache_dir)
         if not os.path.exists(data_cache_dir):
             os.makedirs(data_cache_dir)
-        filename = os.path.join(data_cache_dir,
-                                "execution-{0}.json".format(date_time))
-        file = open(filename, 'w+')
+        filename = "{0}-{1}.json".format(self.summary['name'], date_time)
+        file_path = os.path.join(data_cache_dir, filename)
+        file = open(file_path, 'w+')
         file.write(content)
         file.close()
         if self.debug:
-            print_info("Data capture from execution saved to cache")
+            print_info("Data capture from execution saved to cache as {}"
+                       .format(filename))
 
 
 # Helper function that loads the JSON object coming from either a string,

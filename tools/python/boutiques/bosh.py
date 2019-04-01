@@ -494,48 +494,40 @@ def data(*params):
                             help="Display example data file contents.")
         results = parser.parse_args(params)
 
-        # Generate object that will perform the commands
-        from boutiques.data import Inspector
-        inspector = Inspector({"example: results.example"})
-        # Execute it
-        return inspector.inspect()
+        from boutiques.dataHandler import DataHandler
+        dataHandler = DataHandler()
+        return dataHandler.inspect(results.example)
 
     if action == "publish":
         parser = ArgumentParser("Publishes file(s) in the cache to Zenodo.")
         parser.add_argument("-a", "--author", action="store",
                             help="Set the author name for the data set "
                             "publication. Defaults to anonymous.")
-        parser.add_argument("-s", "--standalone", action="store",
+        parser.add_argument("-s", "--single", action="store",
                             help="Path to file to publish it singly as a "
                             "data set.")
-        parser.add_argument("-i", "--individual", action="store_true",
+        parser.add_argument("-i", "--individually", action="store_true",
                             help="Publishes all data files in cache as "
                             "independent data sets, By Default will publish "
                             "files in bulk data sets.")
         results = parser.parse_args(params)
 
-        # Generate object that will perform the commands
-        from boutiques.data import Publisher
-        publisher = Publisher({"author": results.author,
-                               "standalone": results.standalone,
-                               "individual": results.individual})
-        # Execute it
-        return publisher.publish()
+        from boutiques.dataHandler import DataHandler
+        dataHandler = DataHandler()
+        return dataHandler.publish(results.single, results.author,
+                              results.individually)
 
     if action == "discard":
         parser = ArgumentParser("Delete data file(s) in cache.")
-        group = parser.add_mutually_exclusive_group()
+        group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument("-a", "--all", action="store_true",
                             help="Delete all files in the cache.")
         group.add_argument("-f", "--file", action="store",
                             help="Filename of data file to delete.")
         results = parser.parse_args(params)
 
-        # Generate object that will perform the commands
-        from boutiques.data import Discarder
-        discarder = Discarder({"all": results.all,
-                               "file": results.file})
-        # Execute it
+        from boutiques.dataHandler import Discarder
+        discarder = Discarder(results.all, results.file)
         return discarder.discard()
 
 def bosh(args=None):
