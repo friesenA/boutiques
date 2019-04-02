@@ -4,6 +4,7 @@ from boutiques import __file__ as bfile
 from boutiques.logger import raise_error, print_info
 from boutiques.localExec import extractFileName
 
+
 class DataHandler(object):
     """
     This class represents
@@ -55,10 +56,18 @@ class DataHandler(object):
     # Options allow to only publish a single file, publish files individually as
     # data sets or bulk publish all files in the cache as one data set (default)
     # and allow author to be set
-    def publish(self, single, author="Anonymous", individually=False):
+    def publish(self, single, zenodo_token, author="Anonymous",
+                individually=False, sandbox=False, no_interact=False,
+                verbose=False):
         self.single = single
+        self.zenodo_token = zenodo_token
         self.author = author
         self.individual = individually
+        self.sandbox = sandbox
+        self.no_interact = no_interact
+        self.verbose = verbose
+
+
 
     # Function to remove file(s) from the cache
     # Option all will clear the data collection cache of all files

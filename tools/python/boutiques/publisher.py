@@ -2,13 +2,11 @@
 
 from boutiques.validator import validate_descriptor
 from boutiques.logger import raise_error, print_info
+from boutiques.zenodoHelper import ZenodoError, ZenodoHelper
 import json
 import requests
 import os
 
-
-class ZenodoError(Exception):
-    pass
 
 
 class Publisher():
@@ -22,6 +20,7 @@ class Publisher():
         self.descriptor_file_name = descriptor_file_name
         self.no_int = no_int
         self.zenodo_access_token = auth_token
+        self.zenodo_helper = ZenodoHelper(sandbox, no_int, verbose)
 
         # remove zenodo prefix of ID to update
         try:
@@ -67,100 +66,12 @@ class Publisher():
 
         # Fix Zenodo access token
         if self.zenodo_access_token is None:
-            self.zenodo_access_token = self.get_zenodo_access_token()
-        self.save_zenodo_access_token()
+            self.zenodo_access_token = self.zenodo_helper\
+                .get_zenodo_access_token()
+        self.zenodo_helper.save_zenodo_access_token(self.zenodo_access_token)
 
         # Set Zenodo endpoint
-        self.zenodo_endpoint = "https://sandbox.zenodo.org" if\
-            self.sandbox else "https://zenodo.org"
-        if(self.verbose):
-            print_info("Using Zenodo endpoint {0}"
-                       .format(self.zenodo_endpoint))
-
-    def get_zenodo_access_token(self):
-        json_creds = self.read_credentials()
-        if json_creds.get(self.config_token_property_name()):
-            return json_creds.get(self.config_token_property_name())
-        if(self.no_int):
-            raise_error(ZenodoError, "Cannot find Zenodo credentials.")
-        prompt = ("Please enter your Zenodo access token (it will be "
-                  "saved in {0} for future use): ".format(self.config_file))
-        try:
-            return raw_input(prompt)  # Python 2
-        except NameError:
-            return input(prompt)  # Python 3
-
-    def save_zenodo_access_token(self):
-        json_creds = self.read_credentials()
-        json_creds[self.config_token_property_name()] = self.zenodo_access_token
-        with open(self.config_file, 'w') as f:
-            f.write(json.dumps(json_creds, indent=4, sort_keys=True))
-        if(self.verbose):
-            print_info("Zenodo access token saved in {0}".
-                       format(self.config_file))
-
-    def config_token_property_name(self):
-        if self.sandbox:
-            return "zenodo-access-token-test"
-        return "zenodo-access-token"
-
-    def read_credentials(self):
-        try:
-            with open(self.config_file, "r") as f:
-                json_creds = json.load(f)
-        except IOError:
-            json_creds = {}
-        except ValueError:
-            json_creds = {}
-        return json_creds
-
-    def zenodo_test_api(self):
-        r = requests.get(self.zenodo_endpoint+'/api/deposit/depositions')
-        if(r.status_code != 401):
-            raise_error(ZenodoError, "Cannot access Zenodo", r)
-        if(self.verbose):
-            print_info("Zenodo is accessible", r)
-        r = requests.get(self.zenodo_endpoint+'/api/deposit/depositions',
-                         params={'access_token': self.zenodo_access_token})
-        message = "Cannot authenticate to Zenodo API, check your access token"
-        if(r.status_code != 200):
-            raise_error(ZenodoError, message, r)
-        if(self.verbose):
-            print_info("Authentication to Zenodo successful", r)
-
-    def zenodo_deposit(self):
-        headers = {"Content-Type": "application/json"}
-        data = self.create_metadata()
-
-        r = requests.post(self.zenodo_endpoint+'/api/deposit/depositions',
-                          params={'access_token': self.zenodo_access_token},
-                          json={},
-                          data=json.dumps(data),
-                          headers=headers)
-        if(r.status_code != 201):
-            raise_error(ZenodoError, "Deposition failed", r)
-        zid = r.json()['id']
-        if(self.verbose):
-            print_info("Deposition succeeded, id is {0}".
-                       format(zid), r)
-        return zid
-
-    def zenodo_deposit_updated_version(self, deposition_id):
-        r = requests.post(self.zenodo_endpoint +
-                          '/api/deposit/depositions/%s/actions/newversion'
-                          % deposition_id,
-                          params={'access_token': self.zenodo_access_token})
-        if(r.status_code != 201):
-            raise_error(ZenodoError, "Deposition of new version failed. Check "
-                                     "that the Zenodo ID is correct (if one "
-                                     "was provided).", r)
-        if(self.verbose):
-            print_info("Deposition of new version succeeded", r)
-        new_url = r.json()['links']['latest_draft']
-        new_zid = new_url.split("/")[-1]
-        self.zenodo_update_metadata(new_zid, r.json()['doi'])
-        self.zenodo_delete_files(new_zid, r.json()["files"])
-        return new_zid
+        self.zenodo_endpoint = self.zenodo_helper.get_zenodo_endpoint()
 
     def zenodo_upload_descriptor(self, deposition_id):
         # If in replace mode, remove the old DOI
@@ -184,18 +95,6 @@ class Publisher():
             raise_error(ZenodoError, "Cannot upload descriptor", r)
         if(self.verbose):
             print_info("Descriptor uploaded to Zenodo", r)
-
-    def zenodo_publish(self, deposition_id):
-        r = requests.post(self.zenodo_endpoint +
-                          '/api/deposit/depositions/%s/actions/publish'
-                          % deposition_id,
-                          params={'access_token': self.zenodo_access_token})
-        if(r.status_code != 202):
-            raise_error(ZenodoError, "Cannot publish descriptor", r)
-        if(self.verbose):
-            print_info("Descriptor published to Zenodo, doi is {0}".
-                       format(r.json()['doi']), r)
-        return r.json()['doi']
 
     def zenodo_update_metadata(self, new_deposition_id, old_doi):
         data = self.create_metadata()
@@ -242,7 +141,7 @@ class Publisher():
                 ret = input(prompt)  # Python 3
             if ret.upper() != "Y":
                 return
-        self.zenodo_test_api()
+        self.zenodo_helper.zenodo_test_api()
 
         if self.id_to_update is not None:
             publish_update = True
@@ -277,13 +176,16 @@ class Publisher():
                     publish_update = True
 
         if publish_update:
-            deposition_id = \
-                self.zenodo_deposit_updated_version(self.id_to_update)
+            deposition_id = self.zenodo_helper.zenodo_deposit_updated_version(
+                self.zenodo_update_metadata(), self.zenodo_delete_files(),
+                self.zenodo_access_token, self.id_to_update)
         else:
-            deposition_id = self.zenodo_deposit()
+            deposition_id = self.zenodo_helper.zenodo_deposit(
+                self.create_metadata(), self.zenodo_access_token)
 
         self.zenodo_upload_descriptor(deposition_id)
-        self.doi = self.zenodo_publish(deposition_id)
+        self.doi = self.zenodo_helper.zenodo_publish(
+            self.zenodo_access_token, deposition_id, "Descriptor")
         self.descriptor['doi'] = self.doi
         with open(self.descriptor_file_name, "w") as f:
             f.write(json.dumps(self.descriptor, indent=4, sort_keys=True))

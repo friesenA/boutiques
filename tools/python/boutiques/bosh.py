@@ -470,11 +470,12 @@ def data(*params):
     parser = ArgumentParser("Manage execution data collection.")
 
     parser.add_argument("action", action="store",
-                        help="Action to take on data. Inspect: displays the "
-                        "files of execution data currently in cache. "
+                        help="Manage execution data records. Inspect: displays "
+                        "the unpublished records currently in the cache. "
                         "Publish: publishes contents of cache to Zenodo as "
-                        "a public data set. Discard: remove one or more files "
-                        "from the cache. ",
+                        "a public data set. Requires a Zenodo access token, "
+                        "see http://developers.zenodo.org/#authentication. " 
+                        "Discard: remove one or more records from the cache.",
                         choices=["inspect", "publish", "discard"])
     parser.add_argument("--help", "-h", action="store_true",
                         help="show this help message and exit")
@@ -499,7 +500,7 @@ def data(*params):
         return dataHandler.inspect(results.example)
 
     if action == "publish":
-        parser = ArgumentParser("Publishes file(s) in the cache to Zenodo.")
+        parser = ArgumentParser("Publishes record(s) to a Zenodo data set.")
         parser.add_argument("-a", "--author", action="store",
                             help="Set the author name for the data set "
                             "publication. Defaults to anonymous.")
@@ -510,24 +511,37 @@ def data(*params):
                             help="Publishes all data files in cache as "
                             "independent data sets, By Default will publish "
                             "files in bulk data sets.")
+        parser.add_argument("--no-int", '-y', action="store_true",
+                            help="disable interactive input.")
+        parser.add_argument("-v", "--verbose", action="store_true",
+                            help="print information messages.")
+        parser.add_argument("--sandbox", action="store_true",
+                            help="publish to Zenodo's sandbox instead of "
+                            "production server. Recommended for tests.")
+        parser.add_argument("--zenodo-token", action="store",
+                            help="Zenodo API token to use for authentication. "
+                            "If not used, token will be read from "
+                            "configuration file or requested interactively.")
         results = parser.parse_args(params)
 
         from boutiques.dataHandler import DataHandler
         dataHandler = DataHandler()
-        return dataHandler.publish(results.single, results.author,
-                              results.individually)
+        return dataHandler.publish(results.single, results.zenodo_token,
+                                   results.author, results.individually,
+                                   results.sandbox, results.no_int,
+                                   results.verbose)
 
     if action == "discard":
-        parser = ArgumentParser("Delete data file(s) in cache.")
+        parser = ArgumentParser("Delete data record(s) in cache.")
         group = parser.add_mutually_exclusive_group(required=True)
-        group.add_argument("-a", "--all", action="store_true",
-                            help="Delete all files in the cache.")
-        group.add_argument("-f", "--file", action="store",
+        group.add_argument("-r", "--record", action="store",
                             help="Filename of data file to delete.")
+        group.add_argument( "--all", action="store_true",
+                            help="Delete all records in the cache.")
         results = parser.parse_args(params)
 
         from boutiques.dataHandler import Discarder
-        discarder = Discarder(results.all, results.file)
+        discarder = Discarder(results.all, results.record)
         return discarder.discard()
 
 def bosh(args=None):
