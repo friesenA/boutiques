@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 import os
 import requests
+import datetime
+import hashlib
 from boutiques import __file__ as bfile
 from boutiques.logger import raise_error, print_info
-from boutiques.localExec import extractFileName
+from boutiques.localExec import extractFileName, loadJson
 from boutiques.zenodoHelper import ZenodoHelper, ZenodoError
 
 
@@ -11,14 +13,12 @@ class DataHandler(object):
 
     # Constructor
     def __init__(self):
-        cache_dir = os.path.join(os.path.expanduser('~'), ".cache", "boutiques")
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
-        data_cache_dir = os.path.join(cache_dir, "data")
-        if not os.path.exists(data_cache_dir):
-            os.makedirs(data_cache_dir)
-        self.cache_dir = data_cache_dir
-        self.cache_files = os.listdir(cache_dir)
+        self.cache_dir = getDataCacheDir()
+        self.cache_files = os.listdir(self.cache_dir)
+        self.descriptor_files = [fl for fl in self.cache_files
+                                 if fl.split('-')[0] == "descriptor"]
+        self.record_files = [fl for fl in self.cache_files
+                             if fl not in self.descriptor_files]
 
     # Function to display the contents of the cache
     # Option to display an example file which displays an pre-made example file
@@ -40,9 +40,10 @@ class DataHandler(object):
                 self._display_file(example_fn)
         # Print information about files in cache
         else:
-            # TODO remove descriptors from list or display seperately
-            print("There are {} unpublished files in the cache"
-                  .format(len(self.cache_files)))
+            print("There are {} unpublished records in the cache"
+                  .format(len(self.record_files)))
+            print("There are {} unpublished descriptors in the cache"
+                  .format(len(self.descriptor_files)))
             print(*self.cache_files, sep="\n")
 
     # Private function to print a file to console
@@ -92,42 +93,93 @@ class DataHandler(object):
             self._zenodo_publish([self.filename])
         # All records published to individual data-sets
         elif individually:
-            for file in self.cache_files:
+            for file in self.record_files:
                 self._zenodo_publish([file])
         # All records published to one data-set
         else:
             self.bulk_publish = True
-            self._zenodo_publish(self.cache_files)
+            self._zenodo_publish(self.record_files)
+
 
     # Private method to publish all the records in file_list to a single
     # data-set on Zenodo
     def _zenodo_publish(self, files_list):
+        # Filter files_list by records with Zenodo ids
+        records_dict = self._checkPulblishable(files_list)
+        # Publishable list is empty, end execution
+        if len(records_dict) == 0:
+            return
+
         # Create deposition
         deposition_id = self.zenodo_helper.zenodo_deposit(
             self._create_metadata(), self.zenodo_access_token)
 
         # Upload all files in files_list to deposition
-        for file in files_list:
+        for file, _ in records_dict:
             self._zenodo_upload_dataset(deposition_id, file)
 
-        # Publish deposition
+        # Publish deposition TODO: access key of dict
         msg_obj = "Records" if self.bulk_publish \
-            else "Record {}".format(files_list[0])
-        self.zenodo_helper.zenodo_publish(self.zenodo_access_token,
+            else "Record {}".format(records_dict..keys()[0])
+        doi = self.zenodo_helper.zenodo_publish(self.zenodo_access_token,
                                           deposition_id, msg_obj)
+        # Clear cache of published records
+        if doi:
+            self._clean_cache(records_dict)
 
-    # Private function to set up  metadata
-    def _create_metadata(self):
+    # Private function to filter out records that can not be published
+    # because they lack a descriptor doi
+    def _checkPulblishable(self, files_list):
+        # dict {filename: content_dict}
+        desc_to_publish = set()
+        publishable_dict = {}
+        for fl in files_list:
+            fl_path = os.path.join(self.cache_dir, fl)
+            fl_dict = loadJson(fl_path)
+            doi = fl_dict.get('summary').get('descriptor-doi')
+            # Descriptor is not publish, record contains link to file
+            if doi.split("-")[0] == "descriptor":
+                desc_path = os.path.join(self.cache_dir, doi)
+                desc_dict = loadJson(desc_path)
+                # Descriptor is published, record needs to be updated
+                if desc_dict.get('doi'):
+                    fl_dict['summary']['descriptor-doi'] = desc_dict['doi']
+                    publishable_dict[fl] = fl_dict
+                # Descriptor isn't published, inform user with full prompt
+                print("Record {0} cannot be published as its descriptor is not yet published. ".format(fl))
+                desc_to_publish.add("bosh publish {}".format(desc_path))
+            # Descriptor doi is stored correctly in record
+            else:
+                publishable_dict[fl] = fl_dict
+        # Prompt user to publish descriptors
+        if len(desc_to_publish) != 0:
+            print("Some descriptors have not been published, they can be "
+                  "published with following commands:")
+            for prompt in desc_to_publish:
+                print("\t"+prompt)
+
+        return publishable_dict
+
+    def _create_metadata(self, records_dict):
+        url = "https://zenodo.org/record/{}"
+        identifier = hashlib.md5().update(datetime.datetime.now()).digest()
         data = {
             'metadata': {
+                'title': 'Boutiques-execution-{}'.format(identifier),
                 'upload_type': 'dataset',
                 'description': "Boutiques execution data-set",
-                'creators': [{'name': self.author}],
-                'keywords': ['Boutiques'],
+                'creators': [{'name': self.author}]
             }
         }
-        data['metadata']['title'] = "Execution Records"
-        keywords = data['metadata']['keywords']
+        # Add tool name(s) to keywords
+        data['metadata']['keywords'] = [v['summary']['name']
+                                        for k,v in records_dict.items()]
+        data['metadata']['keywords'].insert(0, 'Boutiiques')
+        #Add descriptor link(s) to related identifiers
+        data['metadata']['related_identifiers'] = \
+            [{'identifier': url.format(v['summary']['descriptor-doi']
+                                       .split('.')[2]),
+             'relation': 'hasPart'} for k,v in records_dict.items()]
 
     def _zenodo_upload_dataset(self, deposition_id, file):
         file_path = os.path.join(self.cache_dir, file)
@@ -156,6 +208,23 @@ class DataHandler(object):
                     "sure? (Y/n ")
         return ("The records will be published to Zenodo as a data-set. This "
                 "cannot be undone. Are you sure? (Y/n) ")
+
+    # Private function to remove published files and descriptors which no
+    # longer have dependencies
+    def _clean_cache(self, records_dict):
+        for record in records_dict.keys():
+            self.delete(record)
+        # List remaining records and collect descriptor-doi values
+        self.record_files = [fl for fl in os.listdir(self.cache_dir)
+                             if fl not in self.descriptor_files]
+        doi_list = [loadJson(fl).get('summary').get('descriptor-doi')
+                    for fl in self.record_files]
+
+        # Check each descriptor in remaining records
+        for descriptor in self.descriptor_files:
+            # No records link to descriptor
+            if descriptor not in doi_list:
+                self.delete(descriptor)
 
 
     # Function to remove file(s) from the cache
@@ -190,4 +259,13 @@ class DataHandler(object):
         if not os.path.isfile(file_path):
             msg = "File {} does not exist in the data cache".format(filename)
             raise_error(ValueError, msg)
+
+def getDataCacheDir():
+    cache_dir = os.path.join(os.path.expanduser('~'), ".cache", "boutiques")
+    data_cache_dir = os.path.join(cache_dir, "data")
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+    if not os.path.exists(data_cache_dir):
+        os.makedirs(data_cache_dir)
+    return data_cache_dir
 
