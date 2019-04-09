@@ -65,14 +65,14 @@ class ZenodoHelper(object):
             json_creds = {}
         return json_creds
 
-    def zenodo_test_api(self):
+    def zenodo_test_api(self, access_token):
         r = requests.get(self.zenodo_endpoint+'/api/deposit/depositions')
         if(r.status_code != 401):
             raise_error(ZenodoError, "Cannot access Zenodo", r)
         if(self.verbose):
             print_info("Zenodo is accessible", r)
         r = requests.get(self.zenodo_endpoint+'/api/deposit/depositions',
-                         params={'access_token': self.zenodo_access_token})
+                         params={'access_token': access_token})
         message = "Cannot authenticate to Zenodo API, check your access token"
         if(r.status_code != 200):
             raise_error(ZenodoError, message, r)
@@ -96,7 +96,7 @@ class ZenodoHelper(object):
                        format(zid), r)
         return zid
 
-    def zenodo_deposit_updated_version(self, update_metadata, delete_files,
+    def zenodo_deposit_updated_version(self, metadata,
                                        access_token, deposition_id):
         r = requests.post(self.zenodo_endpoint +
                           '/api/deposit/depositions/%s/actions/newversion'
@@ -110,9 +110,45 @@ class ZenodoHelper(object):
             print_info("Deposition of new version succeeded", r)
         new_url = r.json()['links']['latest_draft']
         new_zid = new_url.split("/")[-1]
-        update_metadata(new_zid, r.json()['doi'])
-        delete_files(new_zid, r.json()["files"])
+        self.zenodo_update_metadata(new_zid, r.json()['doi'],
+                                    metadata, access_token)
+        self.zenodo_delete_files(new_zid, r.json()["files"], access_token)
         return new_zid
+
+    def zenodo_update_metadata(self, new_deposition_id, old_doi,
+                               metadata, access_token):
+        data = metadata
+
+        # Add the new DOI to the metadata
+        old_doi_split = old_doi.split(".")
+        old_doi_split[-1] = new_deposition_id
+        new_doi = '.'.join(old_doi_split)
+        data['metadata']['doi'] = new_doi
+
+        headers = {"Content-Type": "application/json"}
+        r = requests.put(self.zenodo_endpoint+'/api/deposit/depositions/%s'
+                         % new_deposition_id,
+                         params={'access_token': access_token},
+                         data=json.dumps(data),
+                         headers=headers)
+        if(r.status_code != 200):
+            raise_error(ZenodoError, "Cannot update metadata of new version", r)
+        if(self.verbose):
+            print_info("Updated metadata of new version", r)
+
+    # When a new version is created, the files from the old version are
+    # automatically copied over. This method removes them.
+    def zenodo_delete_files(self, new_deposition_id, files, access_token):
+        for file in files:
+            file_id = file["id"]
+            r = requests.delete(self.zenodo_endpoint +
+                                '/api/deposit/depositions/%s/files/%s'
+                                % (new_deposition_id, file_id),
+                                params={'access_token':access_token})
+            if(r.status_code != 204):
+                raise_error(ZenodoError, "Could not delete old file", r)
+            if(self.verbose):
+                print_info("Deleted old file", r)
 
     def zenodo_publish(self, access_token, deposition_id, msg_obj):
         r = requests.post(self.zenodo_endpoint +

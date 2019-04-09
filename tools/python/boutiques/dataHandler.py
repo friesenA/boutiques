@@ -83,7 +83,7 @@ class DataHandler(object):
                 ret = input(prompt)  # Python 3
             if ret.upper() != "Y":
                 return
-        self.zenodo_helper.zenodo_test_api()
+        self.zenodo_helper.zenodo_test_api(self.zenodo_access_token)
 
         # Flag for data-set size
         self.bulk_publish = False
@@ -115,7 +115,7 @@ class DataHandler(object):
             self._create_metadata(), self.zenodo_access_token)
 
         # Upload all files in files_list to deposition
-        for file, _ in records_dict:
+        for file in records_dict.keys():
             self._zenodo_upload_dataset(deposition_id, file)
 
         # Publish deposition TODO: access key of dict

@@ -96,41 +96,6 @@ class Publisher():
         if(self.verbose):
             print_info("Descriptor uploaded to Zenodo", r)
 
-    def zenodo_update_metadata(self, new_deposition_id, old_doi):
-        data = self.create_metadata()
-
-        # Add the new DOI to the metadata
-        old_doi_split = old_doi.split(".")
-        old_doi_split[-1] = new_deposition_id
-        new_doi = '.'.join(old_doi_split)
-        data['metadata']['doi'] = new_doi
-
-        headers = {"Content-Type": "application/json"}
-        r = requests.put(self.zenodo_endpoint+'/api/deposit/depositions/%s'
-                         % new_deposition_id,
-                         params={'access_token': self.zenodo_access_token},
-                         data=json.dumps(data),
-                         headers=headers)
-        if(r.status_code != 200):
-            raise_error(ZenodoError, "Cannot update metadata of new version", r)
-        if(self.verbose):
-            print_info("Updated metadata of new version", r)
-
-    # When a new version is created, the files from the old version are
-    # automatically copied over. This method removes them.
-    def zenodo_delete_files(self, new_deposition_id, files):
-        for file in files:
-            file_id = file["id"]
-            r = requests.delete(self.zenodo_endpoint +
-                                '/api/deposit/depositions/%s/files/%s'
-                                % (new_deposition_id, file_id),
-                                params={'access_token':
-                                        self.zenodo_access_token})
-            if(r.status_code != 204):
-                raise_error(ZenodoError, "Could not delete old file", r)
-            if(self.verbose):
-                print_info("Deleted old file", r)
-
     def publish(self):
         if(not self.no_int):
             prompt = ("The descriptor will be published to Zenodo, "
@@ -141,7 +106,7 @@ class Publisher():
                 ret = input(prompt)  # Python 3
             if ret.upper() != "Y":
                 return
-        self.zenodo_helper.zenodo_test_api()
+        self.zenodo_helper.zenodo_test_api(self.zenodo_access_token)
 
         if self.id_to_update is not None:
             publish_update = True
@@ -177,8 +142,8 @@ class Publisher():
 
         if publish_update:
             deposition_id = self.zenodo_helper.zenodo_deposit_updated_version(
-                self.zenodo_update_metadata(), self.zenodo_delete_files(),
-                self.zenodo_access_token, self.id_to_update)
+                self.create_metadata(), self.zenodo_access_token,
+                self.id_to_update)
         else:
             deposition_id = self.zenodo_helper.zenodo_deposit(
                 self.create_metadata(), self.zenodo_access_token)
