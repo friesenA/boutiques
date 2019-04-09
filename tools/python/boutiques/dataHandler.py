@@ -72,7 +72,7 @@ class DataHandler(object):
         if self.zenodo_access_token is None:
             self.zenodo_access_token = self.zenodo_helper\
                 .get_zenodo_access_token()
-        self.zenodo_helper.save_zenodo_access_token()
+        self.zenodo_helper.save_zenodo_access_token(self.zenodo_access_token)
 
         # Verify publishing
         if not self.no_int:
@@ -120,7 +120,7 @@ class DataHandler(object):
 
         # Publish deposition TODO: access key of dict
         msg_obj = "Records" if self.bulk_publish \
-            else "Record {}".format(records_dict..keys()[0])
+            else "Record {}".format(records_dict.keys()[0])
         doi = self.zenodo_helper.zenodo_publish(self.zenodo_access_token,
                                           deposition_id, msg_obj)
         # Clear cache of published records
