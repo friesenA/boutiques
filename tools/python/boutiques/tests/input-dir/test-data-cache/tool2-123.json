@@ -1,1 +1,8 @@
-This is an input
+{
+  "summary": {
+    "name": "tool2",
+    "descriptor-doi": "descriptor-tool2-123"
+  }, 
+  "public_invocation": {}, 
+  "public_output": {}
+}
