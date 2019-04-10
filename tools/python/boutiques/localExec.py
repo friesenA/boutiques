@@ -15,7 +15,7 @@ import os.path as op
 from termcolor import colored
 from boutiques.evaluate import evaluateEngine
 from boutiques.logger import raise_error, print_info
-from boutiques.dataHandler import getDataCacheDir
+#from boutiques.dataHandler import getDataCacheDir
 
 
 class ExecutorOutput():

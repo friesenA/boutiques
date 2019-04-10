@@ -82,7 +82,6 @@ class ZenodoHelper(object):
     def zenodo_deposit(self, metadata, access_token):
         headers = {"Content-Type": "application/json"}
         data = metadata
-
         r = requests.post(self.zenodo_endpoint+'/api/deposit/depositions',
                           params={'access_token': access_token},
                           json={},

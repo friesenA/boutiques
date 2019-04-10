@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import os
 import requests
-import datetime
+import time
 import hashlib
 from boutiques import __file__ as bfile
 from boutiques.logger import raise_error, print_info
@@ -55,12 +55,14 @@ class DataHandler(object):
     # Function to publish a data set to Zenodo
     # Options allow to only publish a single file, publish files individually as
     # data sets or bulk publish all files in the cache as one data set (default)
-    def publish(self, file, zenodo_token, author="Anonymous",
+    def publish(self, file, zenodo_token, author,
                 individually=False, sandbox=False, no_int=False,
                 verbose=False):
         self.filename = extractFileName(file)
         self.zenodo_access_token = zenodo_token
-        self.author = author
+        self.author = "Anonymous"
+        if author is not None:
+            self.author = author
         self.individual = individually
         self.sandbox = sandbox
         self.no_int = no_int
@@ -112,15 +114,14 @@ class DataHandler(object):
 
         # Create deposition
         deposition_id = self.zenodo_helper.zenodo_deposit(
-            self._create_metadata(), self.zenodo_access_token)
+            self._create_metadata(records_dict), self.zenodo_access_token)
 
         # Upload all files in files_list to deposition
         for file in records_dict.keys():
             self._zenodo_upload_dataset(deposition_id, file)
 
         # Publish deposition TODO: access key of dict
-        msg_obj = "Records" if self.bulk_publish \
-            else "Record {}".format(records_dict.keys()[0])
+        msg_obj = "Records" if self.bulk_publish else "Record"
         doi = self.zenodo_helper.zenodo_publish(self.zenodo_access_token,
                                           deposition_id, msg_obj)
         # Clear cache of published records
@@ -146,7 +147,8 @@ class DataHandler(object):
                     fl_dict['summary']['descriptor-doi'] = desc_dict['doi']
                     publishable_dict[fl] = fl_dict
                 # Descriptor isn't published, inform user with full prompt
-                print("Record {0} cannot be published as its descriptor is not yet published. ".format(fl))
+                print("Record {0} cannot be published as its descriptor is "
+                      "not yet published. ".format(fl))
                 desc_to_publish.add("bosh publish {}".format(desc_path))
             # Descriptor doi is stored correctly in record
             else:
@@ -162,24 +164,27 @@ class DataHandler(object):
 
     def _create_metadata(self, records_dict):
         url = "https://zenodo.org/record/{}"
-        identifier = hashlib.md5().update(datetime.datetime.now()).digest()
+        hash = hashlib.md5()
+        hash.update(str(time.time()).encode('utf-8'))
+        identifier = hash.hexdigest()
         data = {
             'metadata': {
-                'title': 'Boutiques-execution-{}'.format(identifier),
+                'title': 'Boutiques-execution-{}'.format(identifier[:6]),
                 'upload_type': 'dataset',
-                'description': "Boutiques execution data-set",
+                'description': 'Boutiques execution data-set',
                 'creators': [{'name': self.author}]
             }
         }
         # Add tool name(s) to keywords
         data['metadata']['keywords'] = [v['summary']['name']
                                         for k,v in records_dict.items()]
-        data['metadata']['keywords'].insert(0, 'Boutiiques')
-        #Add descriptor link(s) to related identifiers
+        data['metadata']['keywords'].insert(0, 'Boutiques')
+        # Add descriptor link(s) to related identifiers
         data['metadata']['related_identifiers'] = \
             [{'identifier': url.format(v['summary']['descriptor-doi']
                                        .split('.')[2]),
              'relation': 'hasPart'} for k,v in records_dict.items()]
+        return data
 
     def _zenodo_upload_dataset(self, deposition_id, file):
         file_path = os.path.join(self.cache_dir, file)
@@ -217,7 +222,8 @@ class DataHandler(object):
         # List remaining records and collect descriptor-doi values
         self.record_files = [fl for fl in os.listdir(self.cache_dir)
                              if fl not in self.descriptor_files]
-        doi_list = [loadJson(fl).get('summary').get('descriptor-doi')
+        doi_list = [loadJson(os.path.join(self.cache_dir, fl))
+                        .get('summary').get('descriptor-doi')
                     for fl in self.record_files]
 
         # Check each descriptor in remaining records
@@ -250,7 +256,7 @@ class DataHandler(object):
             # Remove file from cache
             file_path = os.path.join(self.cache_dir, file)
             os.remove(file_path)
-            print_info("File [] has been removed from the data cache"
+            print_info("File {} has been removed from the data cache"
                        .format(file))
 
     def _file_exists_in_cache(self, filename):

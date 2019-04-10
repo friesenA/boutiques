@@ -467,7 +467,7 @@ def pull(*params):
     return puller.pull()
 
 def data(*params):
-    parser = ArgumentParser("Manage execution data collection.")
+    parser = ArgumentParser("Manage execution data collection.", add_help=False)
 
     parser.add_argument("action", action="store",
                         help="Manage execution data records. Inspect: displays "
@@ -646,6 +646,9 @@ def bosh(args=None):
         elif func == "pull":
             out = pull(*params)
             return bosh_return(out, hide=True)
+        elif func == "data":
+            out = data(*params)
+            return bosh_return(out)
         elif func == "version":
             from boutiques.__version__ import VERSION
             return bosh_return(VERSION)
